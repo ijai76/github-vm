@@ -27,22 +27,21 @@ jobs:
           sudo tailscale up --authkey=${TS_TOKEN} --hostname="Mac-ARD-Github" --accept-routes --reset
           echo "ip=$(tailscale ip -4)" >> $GITHUB_OUTPUT
 
-      - name: Fix Privacy & Enable ARD
+      - name: Force Enable ARD (No-TCC Method)
         run: |
-          # 1. Paksa izin Screen Recording untuk ARD Agent lewat database TCC
-          # Ini obat buat pesan "Screen recording might be disabled" di log kamu
-          sudo sqlite3 /Library/Application\ Support/com.apple.TCC/TCC.db "INSERT OR REPLACE INTO access VALUES('kTCCServiceScreenCapture','com.apple.RemoteManagement.RemoteManagementAgent',0,4,4,1,NULL,NULL,0,'UNUSED',NULL,0,$(date +%s));"
-
-          # 2. Aktifkan ARD
+          # Aktifkan ARD dengan hak akses penuh
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
           -activate -configure -access -on \
           -clientopts -setvncpw -vncpw Password123 \
           -restart -agent -privs -all
 
-          # 3. Paksa resolusi layar agar tidak hitam (Headless Fix)
+          # Gunakan AppleScript untuk mencoba Bypass dialog privasi (jika muncul)
+          osascript -e 'tell application "System Events" to click button "Allow" of window 1 of process "RemoteManagementAgent"' || true
+
+          # Paksa layar virtual agar ada resolusinya
           sudo /usr/bin/defaults write /Library/Preferences/com.apple.windowserver.plist DisplayResolutionEnabled -bool true
           
-          # 4. Pastikan tidak tidur
+          # Mencegah sistem Sleep yang bikin port tertutup
           caffeinate -u -t 36000 & 
 
       - name: Koneksi Info
@@ -53,11 +52,11 @@ jobs:
           echo "Password     : Password123"
           echo "=========================================="
 
-      - name: Keep Alive
+      - name: Keep Alive & Screen Refresh
         run: |
           while true; do
-            # Simulasi aktivitas keyboard agar layar bangun
-            osascript -e 'tell application "System Events" to key code 123'
+            # Paksa layar tetap "hidup" dengan simulasi tombol shift
+            osascript -e 'tell application "System Events" to key code 56'
             sleep 300
           done
           
