@@ -1,40 +1,67 @@
-name: MacRDP-Tailscale
-on: 
+name: Mac-ARD-Tailscale
+on:
   workflow_dispatch:
 
 jobs:
   build:
-    name: MacRDP
+    name: MacRemote
     runs-on: macos-latest
-    
-    steps:                 
-    - name: Checkout Code
-      uses: actions/checkout@v4
+    timeout-minutes: 360
 
-    - name: Connect to Tailscale
-      uses: tailscale/github-action@v2
-      with:
-        authkey: ${{ secrets.TAILSCALE_AUTH_KEY }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
-    - name: Setup VNC & Remote Access
-      run: |
-        # Mengaktifkan Screen Sharing (VNC) di macOS
-        sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate -configure -access -on -restart -agent -privs -all
-        
-        # Mengatur password untuk user 'runner' agar bisa login via VNC
-        # Ganti 'Password123' dengan password pilihanmu jika ingin lebih aman
-        sudo dscl . -passwd /Users/runner Password123
-        
-    - name: Get Tailscale IP
-      run: |
-        echo "Koneksi Berhasil!"
-        echo "IP Tailscale Anda adalah:"
-        tailscale ip -4
-        echo "Gunakan IP di atas untuk konek via VNC Viewer"
-        echo "Username: runner"
-        echo "Password: Password123"
+      - name: Setup User & Password
+        id: user_setup
+        run: |
+          # Kita pakai user 'runner' yang sudah ada agar lebih stabil
+          # Tapi kita set passwordnya agar bisa login lewat remote
+          PASSWORD="Password123"
+          sudo dscl . -passwd /Users/runner $PASSWORD
+          
+          echo "password=$PASSWORD" >> $GITHUB_OUTPUT
 
-    - name: Keep Alive (MacOS running...)
-      # Menggunakan tmate agar session tidak langsung mati
-      uses: mxschmitt/action-tmate@v3
-      
+      - name: Install & Connect Tailscale
+        id: tailscale
+        env:
+          TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
+        run: |
+          brew install tailscale
+          sudo tailscaled --tun=userspace-networking &
+          sleep 5
+          sudo tailscale up --authkey=$TAILSCALE_AUTH_KEY --hostname="Mac-ARD-${{ github.run_id }}"
+          
+          TS_IP=$(tailscale ip -4)
+          echo "ip=$TS_IP" >> $GITHUB_OUTPUT
+
+      - name: Enable Apple Remote Desktop (ARD)
+        run: |
+          # Perintah sakti untuk mengaktifkan ARD/VNC bawaan Apple
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
+          -activate -configure -access -on \
+          -clientopts -setvncpw -vncpw Password123 \
+          -restart -agent -privs -all
+          
+          # Membuka firewall untuk ARD
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
+          -configure -allowAccessFor -allUsers
+
+      - name: Koneksi Info
+        run: |
+          echo "=========================================="
+          echo "APPLE REMOTE DESKTOP (ARD) AKTIF"
+          echo "=========================================="
+          echo "IP Tailscale : ${{ steps.tailscale.outputs.ip }}"
+          echo "Username     : runner"
+          echo "Password     : ${{ steps.user_setup.outputs.password }}"
+          echo "VNC Password : Password123"
+          echo "=========================================="
+
+      - name: Keep Alive
+        run: |
+          while true; do
+            echo "Keep alive: Mac masih menyala di ${{ steps.tailscale.outputs.ip }}..."
+            sleep 300
+          done
+          
