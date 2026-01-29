@@ -1,4 +1,4 @@
-name: Mac-ARD-Tailscale
+name: Mac-ARD-Tailscale-Final
 on:
   workflow_dispatch:
 
@@ -12,21 +12,21 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Setup User & Password
+      - name: Create New Admin User
         id: user_setup
         run: |
-          # Kita pakai user 'runner' yang sudah ada agar lebih stabil
-          # Tapi kita set passwordnya agar bisa login lewat remote
-          PASSWORD="Password123"
-          sudo dscl . -passwd /Users/runner $PASSWORD
+          # Kita buat user baru bernama 'adminrdp' agar tidak bentrok dengan 'runner'
+          # Menggunakan sysadminctl yang lebih modern di macOS
+          sudo sysadminctl -addUser adminrdp -fullName "Admin RDP" -password "Password123" -admin
           
-          echo "password=$PASSWORD" >> $GITHUB_OUTPUT
+          echo "User 'adminrdp' berhasil dibuat dengan hak akses Admin."
 
       - name: Install & Connect Tailscale
         id: tailscale
         env:
           TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
         run: |
+          # Install via brew (menghindari error 'Support Linux Only')
           brew install tailscale
           sudo tailscaled --tun=userspace-networking &
           sleep 5
@@ -37,31 +37,27 @@ jobs:
 
       - name: Enable Apple Remote Desktop (ARD)
         run: |
-          # Perintah sakti untuk mengaktifkan ARD/VNC bawaan Apple
+          # Mengaktifkan ARD untuk semua user termasuk user baru kita
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
           -activate -configure -access -on \
           -clientopts -setvncpw -vncpw Password123 \
           -restart -agent -privs -all
-          
-          # Membuka firewall untuk ARD
-          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
-          -configure -allowAccessFor -allUsers
 
       - name: Koneksi Info
         run: |
           echo "=========================================="
-          echo "APPLE REMOTE DESKTOP (ARD) AKTIF"
+          echo "KONEKSI SIAP (VIA TAILSCALE)"
           echo "=========================================="
-          echo "IP Tailscale : ${{ steps.tailscale.outputs.ip }}"
-          echo "Username     : runner"
-          echo "Password     : ${{ steps.user_setup.outputs.password }}"
+          echo "IP Address   : ${{ steps.tailscale.outputs.ip }}"
+          echo "Username     : adminrdp"
+          echo "Password     : Password123"
           echo "VNC Password : Password123"
           echo "=========================================="
 
       - name: Keep Alive
         run: |
           while true; do
-            echo "Keep alive: Mac masih menyala di ${{ steps.tailscale.outputs.ip }}..."
+            echo "Keep alive: Mac menyala di ${{ steps.tailscale.outputs.ip }}..."
             sleep 300
           done
           
