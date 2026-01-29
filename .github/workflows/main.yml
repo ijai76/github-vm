@@ -12,32 +12,29 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Create New Admin User
-        id: user_setup
+      - name: Create Admin User
         run: |
-          # Kita buat user baru bernama 'adminrdp' agar tidak bentrok dengan 'runner'
-          # Menggunakan sysadminctl yang lebih modern di macOS
+          # Membuat user admin agar tidak error permission
           sudo sysadminctl -addUser adminrdp -fullName "Admin RDP" -password "Password123" -admin
-          
-          echo "User 'adminrdp' berhasil dibuat dengan hak akses Admin."
 
       - name: Install & Connect Tailscale
         id: tailscale
         env:
-          TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
+          # Di sini kita panggil nama secret kamu yang 'TOKEN'
+          TS_TOKEN: ${{ secrets.TAILSCALE_AUTH_TOKEN }}
         run: |
-          # Install via brew (menghindari error 'Support Linux Only')
           brew install tailscale
           sudo tailscaled --tun=userspace-networking &
           sleep 5
-          sudo tailscale up --authkey=$TAILSCALE_AUTH_KEY --hostname="Mac-ARD-${{ github.run_id }}"
+          
+          # Kita masukkan isi TOKEN ke dalam parameter --authkey
+          sudo tailscale up --authkey=${TS_TOKEN} --hostname="Mac-ARD-Github" --accept-routes
           
           TS_IP=$(tailscale ip -4)
           echo "ip=$TS_IP" >> $GITHUB_OUTPUT
 
       - name: Enable Apple Remote Desktop (ARD)
         run: |
-          # Mengaktifkan ARD untuk semua user termasuk user baru kita
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
           -activate -configure -access -on \
           -clientopts -setvncpw -vncpw Password123 \
@@ -46,7 +43,7 @@ jobs:
       - name: Koneksi Info
         run: |
           echo "=========================================="
-          echo "KONEKSI SIAP (VIA TAILSCALE)"
+          echo "STATUS: KONEKSI BERHASIL"
           echo "=========================================="
           echo "IP Address   : ${{ steps.tailscale.outputs.ip }}"
           echo "Username     : adminrdp"
