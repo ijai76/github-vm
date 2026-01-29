@@ -14,47 +14,53 @@ jobs:
 
       - name: Create Admin User
         run: |
-          # Membuat user admin agar tidak error permission
+          # Pakai sysadminctl agar pasti tembus permission
           sudo sysadminctl -addUser adminrdp -fullName "Admin RDP" -password "Password123" -admin
 
       - name: Install & Connect Tailscale
         id: tailscale
         env:
-          # Di sini kita panggil nama secret kamu yang 'TOKEN'
           TS_TOKEN: ${{ secrets.TAILSCALE_AUTH_TOKEN }}
         run: |
           brew install tailscale
           sudo tailscaled --tun=userspace-networking &
           sleep 5
-          
-          # Kita masukkan isi TOKEN ke dalam parameter --authkey
-          sudo tailscale up --authkey=${TS_TOKEN} --hostname="Mac-ARD-Github" --accept-routes
+          # Pakai --reset agar tidak bentrok dengan session lama
+          sudo tailscale up --authkey=${TS_TOKEN} --hostname="Mac-ARD-Github" --accept-routes --reset
           
           TS_IP=$(tailscale ip -4)
           echo "ip=$TS_IP" >> $GITHUB_OUTPUT
 
-      - name: Enable Apple Remote Desktop (ARD)
+      - name: Enable ARD & Fix Screen
         run: |
+          # Aktifkan ARD
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
           -activate -configure -access -on \
           -clientopts -setvncpw -vncpw Password123 \
           -restart -agent -privs -all
 
+          # TRICK: Memaksa macOS untuk "bangun" dan set resolusi standar
+          # Ini mencegah layar hitam karena headless mode
+          sudo /usr/bin/defaults write /Library/Preferences/com.apple.windowserver.plist DisplayResolutionEnabled -bool true
+          
+          # Simulasi aktivitas agar screen tidak sleep
+          caffeinate -u -t 3600 & 
+
       - name: Koneksi Info
         run: |
-          echo "=========================================="
-          echo "STATUS: KONEKSI BERHASIL"
           echo "=========================================="
           echo "IP Address   : ${{ steps.tailscale.outputs.ip }}"
           echo "Username     : adminrdp"
           echo "Password     : Password123"
-          echo "VNC Password : Password123"
           echo "=========================================="
 
       - name: Keep Alive
         run: |
+          # Mencetak info setiap 5 menit agar runner tidak idle
           while true; do
-            echo "Keep alive: Mac menyala di ${{ steps.tailscale.outputs.ip }}..."
+            echo "[$(date)] IP: ${{ steps.tailscale.outputs.ip }} - Runner Aktif..."
+            # Kirim event 'key tap' virtual untuk jaga layar tetap bangun
+            osascript -e 'tell application "System Events" to key code 123' 
             sleep 300
           done
           
