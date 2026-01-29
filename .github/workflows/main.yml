@@ -1,24 +1,40 @@
-name: MacRDP
+name: MacRDP-Tailscale
 on: 
   workflow_dispatch:
+
 jobs:
   build:
     name: MacRDP
     runs-on: macos-latest
     
     steps:                 
-    - name: Enabling Remote Access
-      env:
-        NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Connect to Tailscale
+      uses: tailscale/github-action@v2
+      with:
+        authkey: ${{ secrets.TAILSCALE_AUTH_KEY }}
+
+    - name: Setup VNC & Remote Access
       run: |
-          curl -s -o start.sh -L "https://raw.githubusercontent.com/JohnnyNetsec/github-vm/main/mac/start.sh"
-          chmod +x start.sh
-          bash start.sh "$NGROK_AUTH_TOKEN"
-          
-    - name: Log In Details To VNC Server
+        # Mengaktifkan Screen Sharing (VNC) di macOS
+        sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate -configure -access -on -restart -agent -privs -all
+        
+        # Mengatur password untuk user 'runner' agar bisa login via VNC
+        # Ganti 'Password123' dengan password pilihanmu jika ingin lebih aman
+        sudo dscl . -passwd /Users/runner Password123
+        
+    - name: Get Tailscale IP
       run: |
-         chmod +x login.sh
-         bash login.sh
-         
-    - name: MacOS System running...
-      uses: mxschmitt/action-tmate@v2
+        echo "Koneksi Berhasil!"
+        echo "IP Tailscale Anda adalah:"
+        tailscale ip -4
+        echo "Gunakan IP di atas untuk konek via VNC Viewer"
+        echo "Username: runner"
+        echo "Password: Password123"
+
+    - name: Keep Alive (MacOS running...)
+      # Menggunakan tmate agar session tidak langsung mati
+      uses: mxschmitt/action-tmate@v3
+      
